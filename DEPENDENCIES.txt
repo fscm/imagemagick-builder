@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: 2026 Frederico Martins
+# SPDX-License-Identifier: GPL-3.0-only
+# =============================================================================
+# DEPENDENCIES.txt - dependency map for the ImageMagick and Ghostscript static
+# build
+# =============================================================================
+# This file is READ BY THE MAKEFILE: it is the single source of truth for build
+# ordering. Edit it whenever a dependency is added, removed or re-wired.
+#
+# Format (one entry per line):
+#       <package>: <space-separated list of direct dependencies>
+#   - A package with no dependencies is written as "<package>:".
+#   - '#' starts a comment; blank lines are ignored.
+#   - Names must match the package names used by the Makefile
+#     (TOOLS and PACKAGES lists, plus "imagemagick").
+#
+# Two groups exist:
+#   TOOLCHAIN - native build tools installed into $(TOOLCHAIN_DIR); built once.
+#               CMake and the macOS Command Line Tools come from the system and
+#               are not listed here.
+#   LIBRARIES - static libraries, built once PER ARCHITECTURE into
+#               $(DEPS_DIR)/<arch>. Every library build implicitly requires the
+#               complete toolchain (pkgconf for discovery, automake for fresh
+#               config.sub/config.guess, nasm for x86_64 SIMD code), so that is
+#               not repeated below.
+#
+# Rule of thumb when updating: if you bump package X, everything that lists X
+# on its right-hand side must be rebuilt. The Makefile does that automatically
+# on the next "make" (stamps are compared by timestamp).
+# =============================================================================
+
+# ----------------------------- TOOLCHAIN -------------------------------------
+m4:
+autoconf: m4
+automake: autoconf
+libtool: m4
+pkgconf:
+# nasm: assembler for the x86_64 SIMD code of libjpeg-turbo, x265 and libaom.
+nasm:
+
+# ----------------------------- LIBRARIES -------------------------------------
+# --- compression ---
+zlib:
+bzip2:
+xz:
+zstd:
+brotli:
+libdeflate:
+
+# --- image formats ---
+libpng: zlib
+libjpeg-turbo:
+jbigkit:
+# libwebp is built before libtiff (TIFF can use WebP compression). Its command
+# line tools are not wanted, so none of the image libraries are needed here.
+libwebp:
+libtiff: zlib libjpeg-turbo xz zstd jbigkit libwebp libdeflate
+lcms2:
+openjpeg:
+imath:
+openjph:
+# OpenEXR 3.5 finds libdeflate, OpenJPH (HTJ2K), Imath and zstd on its own.
+# Without them it would fall back to vendored copies.
+openexr: imath libdeflate openjph zstd
+highway:
+# libjxl release archive has no git submodules, so brotli, highway and lcms2
+# are taken from the toolchain.
+libjxl: brotli highway lcms2
+libultrahdr: libjpeg-turbo
+libde265:
+x265:
+aom:
+# libheif (HEIC and AVIF): HEVC through libde265 plus x265, AV1 through libaom,
+# JPEG-in-HEIF, JPEG 2000 / HTJ2K, and libsharpyuv (installed by libwebp).
+libheif: libde265 x265 aom libjpeg-turbo openjpeg openjph libwebp libpng zlib
+libraw: lcms2 zlib libjpeg-turbo
+fftw:
+djvulibre: libjpeg-turbo zlib
+
+# --- fonts and XML ---
+# freetype is built without harfbuzz (nothing here needs complex text layout).
+freetype: zlib bzip2 libpng brotli
+expat:
+fontconfig: freetype expat
+libxml2: zlib xz
+
+# --- Ghostscript ---
+# Ghostscript builds with the library sources bundled in its own tarball (jpeg,
+# freetype, openjpeg, jbig2dec, lcms2mt, tiff, tesseract, etc.). None of the
+# libraries above are used by it. It is listed before imagemagick because
+# ImageMagick links its libgs.a.
+ghostscript:
+
+# ------------------------------- TARGET --------------------------------------
+imagemagick: zlib bzip2 xz zstd libpng libjpeg-turbo jbigkit libwebp libtiff lcms2 openjpeg freetype fontconfig libxml2 openexr libjxl libultrahdr libheif libraw fftw djvulibre ghostscript
+
+# =============================================================================
+# Reverse view (informational - NOT parsed, keep in sync by hand if you like)
+#   zlib          <- libpng, libtiff, libheif, freetype, libxml2, libraw, djvulibre
+#   xz            <- libtiff, libxml2
+#   zstd          <- libtiff, openexr
+#   brotli        <- libjxl, freetype
+#   libdeflate    <- libtiff, openexr
+#   bzip2         <- freetype
+#   libpng        <- libheif, freetype
+#   libjpeg-turbo <- libtiff, libultrahdr, libheif, libraw, djvulibre
+#   jbigkit       <- libtiff
+#   libwebp       <- libtiff, libheif
+#   lcms2         <- libjxl, libraw
+#   openjpeg      <- libheif
+#   imath         <- openexr
+#   openjph       <- openexr, libheif
+#   highway       <- libjxl
+#   libde265, x265, aom <- libheif
+#   freetype      <- fontconfig
+#   expat         <- fontconfig
+#   (all libraries except expat, imath, highway, etc.) <- imagemagick
+#   ghostscript   <- imagemagick
+# =============================================================================
